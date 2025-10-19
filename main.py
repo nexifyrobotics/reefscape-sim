@@ -1,38 +1,54 @@
+import os
 import cv2
 import numpy as np
-import apriltag
-import cairosvg
-import os
-import matplotlib.pyplot as plt
+import pupil_apriltags as apriltag
+from physics import Robot
 
-TAG_DIR = "tags"
+TAG_SIZE = 0.16
+FOCAL_LENGTH = 700
 
-def svg_to_png(svg_path, png_path):
-    cairosvg.svg2png(url=svg_path, write_to=png_path)
-
+cap = cv2.VideoCapture(0)
 detector = apriltag.Detector()
+robot = Robot()
 
-png_tags = []
-for svg_file in os.listdir(TAG_DIR):
-    if svg_file.endswith(".svg"):
-        png_path = os.path.join(TAG_DIR, svg_file.replace(".svg", ".png"))
-        svg_to_png(os.path.join(TAG_DIR, svg_file), png_path)
-        png_tags.append(png_path)
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        print("Kamera bulunamadı.")
+        break
 
-for tag_img in png_tags:
-    frame = cv2.imread(tag_img, cv2.IMREAD_GRAYSCALE)
-    detections = detector.detect(frame)
-    
-    print(f"\n[{tag_img}]")
-    if not detections:
-        print("Hiç tag algılanmadı.")
-    else:
-        for d in detections:
-            print(f"Tag ID: {d.tag_id}")
-            for (x, y) in d.corners:
-                cv2.circle(frame, (int(x), int(y)), 4, (0, 255, 0), -1)
-    
-    plt.imshow(frame, cmap="gray")
-    plt.title(f"Detection result: {tag_img}")
-    plt.axis("off")
-    plt.show()
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    detections = detector.detect(gray)
+
+    for d in detections:
+        (ptA, ptB, ptC, ptD) = np.int32(d.corners)
+        center_x, center_y = map(int, d.center)
+        perceived_width = np.linalg.norm(ptA - ptB)
+        distance = (TAG_SIZE * FOCAL_LENGTH) / perceived_width if perceived_width > 0 else None
+        offset_x = center_x - frame.shape[1]/2
+
+        target_angle = robot.angle_to(center_x, center_y)
+        diff_angle = robot.rotate(target_angle)
+        robot.move_forward()
+
+        if distance:
+            if abs(offset_x) < 50:
+                action = "İLERİ" if distance > 60 else "DUR"
+            elif offset_x > 50:
+                action = "SAĞA DÖN"
+            else:
+                action = "SOLA DÖN"
+        else:
+            action = "Tag algılanamadı"
+
+        cv2.polylines(frame, [np.array([ptA, ptB, ptC, ptD])], True, (0, 255, 0), 2)
+        cv2.circle(frame, (center_x, center_y), 5, (0, 0, 255), -1)
+        cv2.putText(frame, f"{action}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
+        print(f"Tag {d.tag_id} | Mesafe: {distance:.1f} | Offset: {offset_x:.1f} | Aksiyon: {action} | Döndüğü açı: {diff_angle:.1f}")
+
+    cv2.imshow("Otonom Simulasyon", frame)
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
