@@ -25,10 +25,10 @@ for tag_img in png_tags:
     
     print(f"\n[{tag_img}]")
     if not detections:
-        print("→ Hiç tag algılanmadı.")
+        print("Hiç tag algılanmadı.")
     else:
         for d in detections:
-            print(f"→ Tag ID: {d.tag_id}")
+            print(f"Tag ID: {d.tag_id}")
             for (x, y) in d.corners:
                 cv2.circle(frame, (int(x), int(y)), 4, (0, 255, 0), -1)
     
